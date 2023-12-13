@@ -15,6 +15,7 @@
 	<description>Playground application</description>
 	<properties>
 		<java.version>21</java.version>
+		<easy-random.version>5.0.0</easy-random.version>
 	</properties>
 	<dependencies>
 		<dependency>
@@ -62,6 +63,12 @@
 			<groupId>org.testcontainers</groupId>
 			<artifactId>junit-jupiter</artifactId>
 			<scope>test</scope>
+		</dependency>
+		<dependency>
+			<groupId>org.jeasy</groupId>
+			<artifactId>easy-random-core</artifactId>
+			<scope>test</scope>
+			<version>${easy-random.version}</version>
 		</dependency>
 	</dependencies>
 
