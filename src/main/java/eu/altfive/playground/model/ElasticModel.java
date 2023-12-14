@@ -20,7 +20,6 @@ public class ElasticModel {
   public static final String STRING_PREFIX = "STRING___";
   public static final String LONG_PREFIX = "LONG___";
   public static final String DOUBLE_PREFIX = "DOUBLE___";
-  public static final String INTEGER_PREFIX = "INTEGER___";
   public static final String BOOLEAN_PREFIX = "BOOLEAN___";
 
   @Id
@@ -80,7 +79,7 @@ public class ElasticModel {
             switch (v) {
               case String s -> result.put(STRING_PREFIX + k, s);
               case Boolean b -> result.put(BOOLEAN_PREFIX + k, String.valueOf(b));
-              case Integer i -> result.put(INTEGER_PREFIX + k, String.valueOf(i));
+              case Integer i -> result.put(LONG_PREFIX + k, String.valueOf(i));
               case Long l -> result.put(LONG_PREFIX + k, String.valueOf(l));
               case Double d -> result.put(DOUBLE_PREFIX + k, String.valueOf(d));
               case Date date -> result.put(DATE_PREFIX + k, date.toInstant().toString());
@@ -103,8 +102,6 @@ public class ElasticModel {
               result.put(k.substring(STRING_PREFIX.length()), v);
             } else if (k.startsWith(BOOLEAN_PREFIX)){
               result.put(k.substring(BOOLEAN_PREFIX.length()), Boolean.valueOf(v));
-            } else if (k.startsWith(INTEGER_PREFIX)) {
-              result.put(k.substring(INTEGER_PREFIX.length()), Integer.valueOf(v));
             } else if (k.startsWith(LONG_PREFIX)){
               result.put(k.substring(LONG_PREFIX.length()), Long.valueOf(v));
             } else if (k.startsWith(DOUBLE_PREFIX)){
