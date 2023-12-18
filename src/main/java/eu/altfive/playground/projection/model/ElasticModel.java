@@ -1,4 +1,4 @@
-package eu.altfive.playground.model;
+package eu.altfive.playground.projection.model;
 
 import java.io.Serializable;
 import java.time.Instant;
@@ -26,6 +26,9 @@ public class ElasticModel {
   @Field(type = FieldType.Keyword)
   private String id;
 
+  @Field(type = FieldType.Keyword)
+  private String name;
+
   @Field(type = FieldType.Flattened)
   @ValueConverter(SpecificAttributesConverter.class)
   private Map<String, Serializable> processVariables;
@@ -36,6 +39,14 @@ public class ElasticModel {
 
   public void setId(String id) {
     this.id = id;
+  }
+
+  public String getName() {
+    return name;
+  }
+
+  public void setName(String name) {
+    this.name = name;
   }
 
   public Map<String, Serializable> getProcessVariables() {

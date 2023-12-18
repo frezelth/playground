@@ -1,4 +1,4 @@
-package eu.altfive.playground.query;
+package eu.altfive.playground.projection.query;
 
 import java.util.List;
 

@@ -6,5 +6,5 @@ services:
       - 'discovery.type=single-node'
       - 'xpack.security.enabled=false'
     ports:
-      - '9200'
+      - '9200:9200'
       - '9300'
