@@ -65,23 +65,19 @@ class ElasticsearchTest {
   @ServiceConnection
   static ElasticsearchContainer elasticsearch = new ElasticsearchContainer("docker.elastic.co/elasticsearch/elasticsearch:7.17.10");
 
-
   @Test
   void testRetrieveData() throws IOException {
-    ElasticModel saved = new ElasticModel();
+    ElasticModelNested saved = new ElasticModelNested();
     saved.setId("1");
-    saved.setProcessVariables(
-        Map.of(
-            "key-string", "value-string",
-            "key-date", new Date(),
-            "key-int", 123
-        )
-    );
-    repository.save(saved);
+    saved.setParentId("123");
+    saved.setVersion(0L);
+    nestedRepository.save(saved);
 
     long before = System.currentTimeMillis();
-    ElasticModel retrieved = repository.findById("1").orElseThrow();
-    System.out.println("TIME:"+(System.currentTimeMillis() - before));
+    ElasticModelNested retrieved = nestedRepository.findById("1").orElseThrow();
+//    System.out.println("TIME:"+(System.currentTimeMillis() - before));
+    org.assertj.core.api.Assertions.assertThat(retrieved).usingRecursiveComparison().isEqualTo(saved);
+    nestedRepository.save(retrieved);
     org.assertj.core.api.Assertions.assertThat(retrieved).usingRecursiveComparison().isEqualTo(saved);
   }
 

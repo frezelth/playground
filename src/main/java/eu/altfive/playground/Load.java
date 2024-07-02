@@ -2,6 +2,7 @@ package eu.altfive.playground;
 
 import eu.altfive.playground.command.AddVariable;
 import eu.altfive.playground.command.CreateModel;
+import eu.altfive.playground.command.SetParent;
 import eu.altfive.playground.command.VariableValue;
 import eu.altfive.playground.projection.model.ElasticModelNested.NestedSpecificAttribute;
 import java.io.Serializable;
@@ -13,9 +14,8 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Random;
+import java.util.UUID;
 import org.axonframework.commandhandling.gateway.CommandGateway;
-import org.jeasy.random.EasyRandom;
-import org.jeasy.random.EasyRandomParameters;
 import org.jeasy.random.api.Randomizer;
 import org.jeasy.random.randomizers.AbstractRandomizer;
 import org.jeasy.random.randomizers.number.DoubleRandomizer;
@@ -32,44 +32,134 @@ import org.springframework.stereotype.Component;
 @Component
 public class Load {
 
-  private final CommandGateway commandGateway;
+  private final BrokerSimulator brokerSimulator;
 
-  public Load(CommandGateway commandGateway) {
-    this.commandGateway = commandGateway;
+  private static final int TOTAL_NUMBER_OF_AGGREGATES = 10000;
+
+  private final Random random = new Random();
+  private final StringRandomizer stringRandomizer = new StringRandomizer();
+  private final LongRangeRandomizer longRangeRandomizer = new LongRangeRandomizer(0L, 1000L);
+  private final DoubleRangeRandomizer doubleRandomizer = new DoubleRangeRandomizer(0.0, 1000.0);
+  private final DateRandomizer dateRandomizer = new DateRandomizer();
+
+  public Load(BrokerSimulator brokerSimulator) {
+    this.brokerSimulator = brokerSimulator;
   }
 
   @EventListener
   public void onApplicationStart(ApplicationReadyEvent event){
-    EasyRandomParameters parameters = new EasyRandomParameters();
-    EasyRandom easyRandom = new EasyRandom(parameters);
-    List<String> aggregateIds = new ArrayList<>();
 
-    for (int i=0;i<1000;i++){
-      String identifier = commandGateway.sendAndWait(new CreateModel("name_"+i));
-      aggregateIds.add(identifier);
+    List<String> aggregateIds = new ArrayList<>();
+    // list with all aggregates
+    for (int i=0; i<TOTAL_NUMBER_OF_AGGREGATES; i++) {
+      aggregateIds.add(UUID.randomUUID().toString());
     }
 
-    Random random = new Random();
-    StringRandomizer stringRandomizer = new StringRandomizer();
-    LongRangeRandomizer longRangeRandomizer = new LongRangeRandomizer(0L, 1000L);
-    DoubleRangeRandomizer doubleRandomizer = new DoubleRangeRandomizer(0.0, 1000.0);
-    DateRandomizer dateRandomizer = new DateRandomizer();
-    for (String aggregateId : aggregateIds){
-      for (int i=0;i<30;i++){
+    // 50% = top processes
+    // 20% = first level children
+    // 15% = second level children
+    // 10% = third level children
+    // 5% = fourth level children
+    List<String> firstChildren = aggregateIds.subList(0, (int)Math.round(aggregateIds.size() * 0.2));
+    List<String> secondChildren = aggregateIds.subList(firstChildren.size(), firstChildren.size() + (int)Math.round(aggregateIds.size() * 0.15));
+    List<String> thirdChildren = aggregateIds.subList(firstChildren.size() + secondChildren.size(), firstChildren.size() + secondChildren.size() + (int)Math.round(aggregateIds.size() * 0.1));
+    List<String> fourthChildren = aggregateIds.subList(firstChildren.size() + secondChildren.size() + thirdChildren.size(), firstChildren.size() + secondChildren.size() + thirdChildren.size() + (int)Math.round(aggregateIds.size() * 0.05));
+
+    List<String> rootLevel = aggregateIds.subList(firstChildren.size() + secondChildren.size() + thirdChildren.size() + fourthChildren.size(),
+        aggregateIds.size());
+
+    Map<String,String> childToParent = new HashMap<>();
+
+    fourthChildren.forEach(s -> childToParent.put(s, thirdChildren.get(random.nextInt(
+        thirdChildren.size()))));
+    thirdChildren.forEach(s -> childToParent.put(s, secondChildren.get(random.nextInt(
+        secondChildren.size()))));
+    secondChildren.forEach(s -> childToParent.put(s, firstChildren.get(random.nextInt(
+        firstChildren.size()))));
+    firstChildren.forEach(s -> childToParent.put(s, rootLevel.get(random.nextInt(rootLevel.size()))));
+
+    for (String aggregateId : aggregateIds) {
+      brokerSimulator.sendCommand(aggregateId, new CreateModel(aggregateId, "name_"+aggregateId));
+      String parentId = childToParent.get(aggregateId);
+      if (parentId != null){
+        brokerSimulator.sendCommand(aggregateId, new SetParent(aggregateId, parentId));
+      }
+
+      for (int i=0;i<5;i++){
         int r = random.nextInt(4);
         if (r == 0){
-          commandGateway.send(new AddVariable(aggregateId, "var_"+i, new VariableValue(stringRandomizer.getRandomValue(), null, null, null)));
+          brokerSimulator.sendCommand(aggregateId, new AddVariable(aggregateId,
+              UUID.randomUUID().toString(), new VariableValue(stringRandomizer.getRandomValue(), null, null, null)));
         } else if (r == 1){
-          commandGateway.send(new AddVariable(aggregateId, "var_"+i, new VariableValue(null, longRangeRandomizer.getRandomValue(), null, null)));
+          brokerSimulator.sendCommand(aggregateId, new AddVariable(aggregateId, UUID.randomUUID().toString(), new VariableValue(null, longRangeRandomizer.getRandomValue(), null, null)));
         } else if (r == 2){
-          commandGateway.send(new AddVariable(aggregateId, "var_"+i, new VariableValue(null, null,
+          brokerSimulator.sendCommand(aggregateId, new AddVariable(aggregateId, UUID.randomUUID().toString(), new VariableValue(null, null,
               doubleRandomizer.getRandomValue(), null)));
         } else {
-          commandGateway.send(new AddVariable(aggregateId, "var_"+i, new VariableValue(null, null,
+          brokerSimulator.sendCommand(aggregateId, new AddVariable(aggregateId, UUID.randomUUID().toString(), new VariableValue(null, null,
               null, dateRandomizer.getRandomValue())));
         }
       }
+
     }
+
+
+//    for (String aggregateId : aggregateIds) {
+//      commandGateway.sendAndWait(new CreateModel(aggregateId, "name_"+aggregateId));
+//      String parentId = childToParent.get(aggregateId);
+//      if (parentId != null){
+//        commandGateway.sendAndWait(new SetParent(aggregateId, parentId));
+//      }
+//
+//      for (int i=0;i<5;i++){
+//        int r = random.nextInt(4);
+//        if (r == 0){
+//          commandGateway.sendAndWait(new AddVariable(aggregateId,
+//              UUID.randomUUID().toString(), new VariableValue(stringRandomizer.getRandomValue(), null, null, null)));
+//        } else if (r == 1){
+//          commandGateway.sendAndWait(new AddVariable(aggregateId, UUID.randomUUID().toString(), new VariableValue(null, longRangeRandomizer.getRandomValue(), null, null)));
+//        } else if (r == 2){
+//          commandGateway.sendAndWait(new AddVariable(aggregateId, UUID.randomUUID().toString(), new VariableValue(null, null,
+//              doubleRandomizer.getRandomValue(), null)));
+//        } else {
+//          commandGateway.sendAndWait(new AddVariable(aggregateId, UUID.randomUUID().toString(), new VariableValue(null, null,
+//              null, dateRandomizer.getRandomValue())));
+//        }
+//      }
+//
+//    }
+
+//
+//    EasyRandomParameters parameters = new EasyRandomParameters();
+//    EasyRandom easyRandom = new EasyRandom(parameters);
+//    List<String> aggregateIds = new ArrayList<>();
+//
+//    for (int i=0;i<1000;i++){
+//      String id = UUID.randomUUID().toString();
+//      commandGateway.sendAndWait(new CreateModel(id, "name_"+i), MetaData.with("ancestor", id));
+//      aggregateIds.add(id);
+//    }
+//
+//    List<String> firstPart = aggregateIds.subList(0,200);
+//    List<String> secondPart = aggregateIds.subList(200,400);
+//    List<String> thirdPart = aggregateIds.subList(400,600);
+//    List<String> fourthPart = aggregateIds.subList(600,800);
+//    List<String> fifthPart = aggregateIds.subList(800,1000);
+//
+//    Map<String, String> aggregateToAncestor = new HashMap<>();
+//
+//    for (int i=0;i<200;i++){
+//      commandGateway.send(new SetParent(firstPart.get(i), secondPart.get(i), fifthPart.get(i)), MetaData.with("ancestor", fifthPart.get(i)));
+//      commandGateway.send(new SetParent(secondPart.get(i), thirdPart.get(i), fifthPart.get(i)), MetaData.with("ancestor", fifthPart.get(i)));
+//      commandGateway.send(new SetParent(thirdPart.get(i), fourthPart.get(i), fifthPart.get(i)), MetaData.with("ancestor", fifthPart.get(i)));
+//      commandGateway.send(new SetParent(fourthPart.get(i), fifthPart.get(i), fifthPart.get(i)), MetaData.with("ancestor", fifthPart.get(i)));
+//
+//      aggregateToAncestor.put(firstPart.get(i), fifthPart.get(i));
+//      aggregateToAncestor.put(secondPart.get(i), fifthPart.get(i));
+//      aggregateToAncestor.put(thirdPart.get(i), fifthPart.get(i));
+//      aggregateToAncestor.put(fourthPart.get(i), fifthPart.get(i));
+//    }
+//
   }
 
 

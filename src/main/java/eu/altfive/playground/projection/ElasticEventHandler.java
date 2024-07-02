@@ -1,16 +1,20 @@
 package eu.altfive.playground.projection;
 
+import eu.altfive.playground.command.AddVariable;
 import eu.altfive.playground.command.VariableValue;
 import eu.altfive.playground.event.ModelCreated;
+import eu.altfive.playground.event.ParentSet;
 import eu.altfive.playground.event.VariableAdded;
 import eu.altfive.playground.event.VariableUpdated;
 import eu.altfive.playground.projection.model.ElasticModel;
+import eu.altfive.playground.projection.model.ElasticModelNested;
 import eu.altfive.playground.projection.repository.ElasticModelRepository;
 import java.io.Serializable;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicLong;
+import org.axonframework.commandhandling.gateway.CommandGateway;
 import org.axonframework.config.ProcessingGroup;
 import org.axonframework.eventhandling.EventHandler;
 import org.axonframework.messaging.unitofwork.UnitOfWork;
@@ -22,21 +26,22 @@ import org.springframework.data.elasticsearch.core.query.IndexQueryBuilder;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
+import org.springframework.util.StringUtils;
 
-@ProcessingGroup("elastic-model")
-@Component
+//@ProcessingGroup("elastic-model")
+//@Component
 public class ElasticEventHandler {
 
   private static final AtomicLong startTime = new AtomicLong(0);
   private static final AtomicLong ongoingTime = new AtomicLong(0);
   private static final AtomicLong lastCheckTime = new AtomicLong(0);
 
+  private final CommandGateway commandGateway;
   private final ElasticModelRepository repository;
-  private final ElasticsearchTemplate elasticsearchTemplate;
 
-  public ElasticEventHandler(ElasticModelRepository repository, ElasticsearchTemplate elasticsearchTemplate) {
+  public ElasticEventHandler(CommandGateway commandGateway, ElasticModelRepository repository) {
+    this.commandGateway = commandGateway;
     this.repository = repository;
-    this.elasticsearchTemplate = elasticsearchTemplate;
   }
 
   @Scheduled(initialDelay = 10000, fixedDelay = 5000)
@@ -52,23 +57,39 @@ public class ElasticEventHandler {
     if (startTime.longValue() == 0){
       startTime.set(System.currentTimeMillis());
     }
-//    ElasticModel model = getOngoingBatchRecord(unitOfWork, event.id(), true);
-    ElasticModel model = new ElasticModel();
+    ElasticModel model = getOngoingBatchRecord(unitOfWork, event.id(), true);
+//    ElasticModel model = new ElasticModel();
     model.setId(event.id());
     model.setName(event.name());
-    repository.save(model);
+//    repository.save(model);
     ongoingTime.set(System.currentTimeMillis());
   }
 
   @EventHandler
   void handle(VariableAdded event, UnitOfWork<?> unitOfWork){
-    ElasticModel model = repository.findById(event.id()).orElseThrow();
-//    ElasticModel model = getOngoingBatchRecord(unitOfWork, event.id(), false);
+//    ElasticModel model = repository.findById(event.id()).orElseThrow();
+    ElasticModel model = getOngoingBatchRecord(unitOfWork, event.id(), false);
     if (model.getProcessVariables() == null){
       model.setProcessVariables(new HashMap<>());
     }
-    model.getProcessVariables().put(event.name(), getValueFromVariableValue(event.value()));
-    repository.save(model);
+    Serializable valueFromVariableValue = getValueFromVariableValue(event.value());
+    model.getProcessVariables().put(event.name(), valueFromVariableValue);
+    if (StringUtils.hasLength(model.getParentId())){
+//      commandGateway.send(new AddVariable(model.getParentId(),
+//          event.name(), event.value()));
+      handle(new VariableAdded(model.getParentId(), event.name(), event.value()), unitOfWork);
+    }
+//    repository.save(model);
+    ongoingTime.set(System.currentTimeMillis());
+  }
+
+  @EventHandler
+  void handle(ParentSet event, UnitOfWork<?> unitOfWork){
+    ElasticModel model = getOngoingBatchRecord(unitOfWork, event.id(), false);
+//    ElasticModelNested model = repository.findById(event.id()).orElseThrow();
+    model.setParentId(event.parentId());
+//    model.setVersion(model.getVersion() + 1);
+//    repository.save(model);
     ongoingTime.set(System.currentTimeMillis());
   }
 
@@ -90,15 +111,9 @@ public class ElasticEventHandler {
         "current-es-batch", k -> {
           Map<String, ElasticModel> map = new HashMap<>();
           unitOfWork.onPrepareCommit(uow -> {
-          List<IndexQuery> list = map.values()
-            .stream().map(elasticModel -> new IndexQueryBuilder()
-                .withIndex("model")
-                .withId(elasticModel.getId())
-                .withObject(elasticModel)
-                .build())
-            .toList();
-            elasticsearchTemplate.bulkIndex(list, BulkOptions.builder().withRefreshPolicy(
-                RefreshPolicy.IMMEDIATE).build(), ElasticModel.class);
+            map.values().forEach(model -> model.setVersion(model.getVersion() == null ?
+                0 : model.getVersion() + 1));
+            repository.saveAll(map.values());
           });
           return map;
         });

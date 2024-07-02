@@ -4,9 +4,12 @@ package eu.altfive.playground.projection.model;
 import java.util.Date;
 import java.util.List;
 import org.springframework.data.annotation.Id;
+import org.springframework.data.annotation.Version;
 import org.springframework.data.elasticsearch.annotations.Document;
+import org.springframework.data.elasticsearch.annotations.DynamicTemplates;
 import org.springframework.data.elasticsearch.annotations.Field;
 import org.springframework.data.elasticsearch.annotations.FieldType;
+import org.springframework.data.elasticsearch.annotations.Mapping;
 
 @Document(indexName = "model-nested")
 public class ElasticModelNested {
@@ -18,8 +21,14 @@ public class ElasticModelNested {
   @Field(type = FieldType.Keyword)
   private String name;
 
-  @Field(type = FieldType.Nested)
+  @Field(type = FieldType.Flattened)
   private List<NestedSpecificAttribute> processVariables;
+
+  @Version
+  @Field(type = FieldType.Long)
+  private Long version = 0L;
+
+  private String parentId;
 
   public String getId() {
     return id;
@@ -36,6 +45,22 @@ public class ElasticModelNested {
   public void setProcessVariables(
       List<NestedSpecificAttribute> processVariables) {
     this.processVariables = processVariables;
+  }
+
+  public String getParentId() {
+    return parentId;
+  }
+
+  public void setParentId(String parentId) {
+    this.parentId = parentId;
+  }
+
+  public Long getVersion() {
+    return version;
+  }
+
+  public void setVersion(Long version) {
+    this.version = version;
   }
 
   public String getName() {

@@ -7,13 +7,16 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Objects;
 import org.springframework.data.annotation.Id;
+import org.springframework.data.annotation.Version;
 import org.springframework.data.elasticsearch.annotations.Document;
 import org.springframework.data.elasticsearch.annotations.Field;
 import org.springframework.data.elasticsearch.annotations.FieldType;
+import org.springframework.data.elasticsearch.annotations.Mapping;
 import org.springframework.data.elasticsearch.annotations.ValueConverter;
 import org.springframework.data.elasticsearch.core.mapping.PropertyValueConverter;
 
 @Document(indexName = "model")
+//@Mapping(mappingPath = "/mapping.json")
 public class ElasticModel {
 
   public static final String DATE_PREFIX = "DATE___";
@@ -32,6 +35,12 @@ public class ElasticModel {
   @Field(type = FieldType.Flattened)
   @ValueConverter(SpecificAttributesConverter.class)
   private Map<String, Serializable> processVariables;
+
+  @Version
+  @Field(type = FieldType.Long)
+  private Long version = 0L;
+
+  private String parentId;
 
   public String getId() {
     return id;
@@ -68,6 +77,22 @@ public class ElasticModel {
     ElasticModel that = (ElasticModel) o;
     return Objects.equals(id, that.id) && Objects.equals(processVariables,
         that.processVariables);
+  }
+
+  public Long getVersion() {
+    return version;
+  }
+
+  public void setVersion(Long version) {
+    this.version = version;
+  }
+
+  public String getParentId() {
+    return parentId;
+  }
+
+  public void setParentId(String parentId) {
+    this.parentId = parentId;
   }
 
   @Override

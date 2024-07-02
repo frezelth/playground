@@ -1,0 +1,42 @@
+{
+  "dynamic": "strict",
+  "dynamic_templates": [
+    {
+      "datesProcessVariables": {
+        "path_match": "processVariables.DATE_*",
+        "match_mapping_type": "date",
+        "mapping": {
+          "type": "nested",
+          "properties": {
+            "name": {
+              "type": "keyword"
+            },
+            "value": {
+              "type": "date"
+            }
+          }
+        }
+      }
+    }
+  ],
+  "properties": {
+    "_class": {
+      "type": "keyword"
+    },
+    "id": {
+      "type": "keyword"
+    },
+    "name": {
+      "type": "keyword"
+    },
+    "parentId": {
+      "type": "keyword"
+    },
+    "version": {
+      "type": "long"
+    },
+    "processVariables": {
+      "type": "flattened"
+    }
+  }
+}
