@@ -1,8 +1,6 @@
 package eu.altfive.playground.projection;
 
 import eu.altfive.playground.BrokerSimulator;
-import eu.altfive.playground.command.AddVariable;
-import eu.altfive.playground.command.VariableValue;
 import eu.altfive.playground.event.ModelCreated;
 import eu.altfive.playground.event.ParentSet;
 import eu.altfive.playground.event.VariableAdded;
@@ -10,9 +8,11 @@ import eu.altfive.playground.event.VariableUpdated;
 import eu.altfive.playground.projection.model.ElasticModelNested;
 import eu.altfive.playground.projection.model.ElasticModelNested.NestedSpecificAttribute;
 import eu.altfive.playground.projection.repository.ElasticModelNestedRepository;
+import eu.europa.ec.cc.variables.proto.VariableValue;
+import eu.europa.ec.cc.variables.proto.VariableValue.KindCase;
 import io.micrometer.common.util.StringUtils;
 import java.util.ArrayList;
-import java.util.HashMap;
+import java.util.Date;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicLong;
 import org.axonframework.commandhandling.gateway.CommandGateway;
@@ -21,12 +21,17 @@ import org.axonframework.eventhandling.EventHandler;
 import org.axonframework.messaging.unitofwork.UnitOfWork;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.elasticsearch.client.elc.ElasticsearchTemplate;
+import org.springframework.data.elasticsearch.core.document.Document;
+import org.springframework.data.elasticsearch.core.mapping.IndexCoordinates;
+import org.springframework.data.elasticsearch.core.query.ScriptType;
+import org.springframework.data.elasticsearch.core.query.UpdateQuery;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
-@ProcessingGroup("elastic-nested-nobatch")
-@Component
+//@ProcessingGroup("elastic-nested-nobatch")
+//@Component
 public class ElasticNoBatchNestedEventHandler {
 
   private static final Logger LOGGER = LoggerFactory.getLogger(ElasticNoBatchNestedEventHandler.class);
@@ -39,7 +44,7 @@ public class ElasticNoBatchNestedEventHandler {
   private final ElasticsearchTemplate elasticsearchTemplate;
   private final CommandGateway commandGateway;
 
-  public ElasticNoBatchNestedEventHandler(ElasticModelNestedRepository repository,
+  public ElasticNoBatchNestedEventHandler(@Autowired(required=false) ElasticModelNestedRepository repository,
       ElasticsearchTemplate elasticsearchTemplate,
       BrokerSimulator brokerSimulator,
       CommandGateway commandGateway) {
@@ -62,19 +67,87 @@ public class ElasticNoBatchNestedEventHandler {
     if (startTime.longValue() == 0){
       startTime.set(System.currentTimeMillis());
     }
-    ElasticModelNested model = repository.findById(event.id()).orElse(new ElasticModelNested());
-    model.setId(event.id());
-    model.setName(event.name());
-    model.setVersion(model.getVersion() + 1);
-    repository.save(model);
+//    ElasticModelNested model = repository.findById(event.getId()).orElse(new ElasticModelNested());
+//    model.setId(event.getId());
+//    model.setName(event.getName());
+//    model.setVersion(model.getVersion() + 1);
+//    repository.save(model);
+
+    final String updateScript = "ctx._source.id = params.id; ctx._source.name = params.name;";
+
+    UpdateQuery query = UpdateQuery.builder(event.getId())
+        .withScriptedUpsert(Boolean.TRUE)
+        .withScript(updateScript)
+        .withParams(
+            Map.of(
+                "id", event.getId(),
+                "name", event.getName()
+            ))
+        .withScriptType(ScriptType.INLINE)
+        .withUpsert(Document.create())
+        .build();
+    elasticsearchTemplate.update(query, IndexCoordinates.of("model-nested"));
     ongoingTime.set(System.currentTimeMillis());
   }
 
   @EventHandler
   void handle(VariableAdded event){
 //    ElasticModelNested model = repository.findById(event.id()).orElseThrow();
-    handleVariableAdded(event.id(), event.name(), event.value());
+//    handleVariableAdded(event.getId(), event.getName(), event.getValue());
 //    repository.save(model);
+
+    final String updateScript = "if (ctx._source.processVariables == null){ ctx._source.processVariables = new ArrayList(); } ctx._source.processVariables.add(params.processVariable);";
+
+    NestedSpecificAttribute nestedSpecificAttribute = new NestedSpecificAttribute();
+    nestedSpecificAttribute.setName(event.getName());
+    nestedSpecificAttribute.setValueDate(null);
+    nestedSpecificAttribute.setValueDouble(null);
+    nestedSpecificAttribute.setValueLong(null);
+    nestedSpecificAttribute.setValueDate(null);
+
+    if (event.getValue().getKindCase() == KindCase.STRINGVALUE){
+      nestedSpecificAttribute.setValueString(event.getValue().getStringValue());
+    } else if (event.getValue().getKindCase() == KindCase.LONGVALUE){
+      nestedSpecificAttribute.setValueLong(event.getValue().getLongValue());
+    } else if (event.getValue().getKindCase() == KindCase.DOUBLEVALUE){
+      nestedSpecificAttribute.setValueDouble(event.getValue().getDoubleValue());
+    } else if (event.getValue().getKindCase() == KindCase.TIMEVALUE){
+      nestedSpecificAttribute.setValueDate(new Date(event.getValue().getTimeValue().getSeconds() * 1000));
+    } else {
+      throw new IllegalArgumentException();
+    }
+
+    UpdateQuery query = UpdateQuery.builder(event.getId())
+        .withScript(updateScript)
+        .withParams(
+            Map.of(
+                "processVariable", nestedSpecificAttribute,
+                "id", event.getId()
+            ))
+        .withScriptType(ScriptType.INLINE)
+        .withScriptedUpsert(Boolean.TRUE)
+        .withUpsert(Document.create())
+        .build();
+
+    elasticsearchTemplate.update(query, IndexCoordinates.of("model-nested"));
+
+    for (String parentId : event.getParentIdsList()){
+      UpdateQuery queryParent = UpdateQuery.builder(parentId)
+          .withScript(updateScript)
+          .withParams(
+              Map.of(
+                  "processVariable", nestedSpecificAttribute,
+                  "id", parentId
+              ))
+          .withScriptType(ScriptType.INLINE)
+          .withScriptedUpsert(Boolean.TRUE)
+          .withUpsert(Document.create())
+          .build();
+
+      elasticsearchTemplate.update(query, IndexCoordinates.of("model-nested"));
+    }
+
+
     ongoingTime.set(System.currentTimeMillis());
   }
 
@@ -86,46 +159,30 @@ public class ElasticNoBatchNestedEventHandler {
     ongoingTime.set(System.currentTimeMillis());
   }
 
-  private void handleVariableAdded(String id, String name, VariableValue value) {
-    ElasticModelNested model = repository.findById(id).orElseGet(() -> {
-      ElasticModelNested agg = new ElasticModelNested();
-      agg.setId(id);
-      return agg;
-    });
-    if (model.getProcessVariables() == null){
-      model.setProcessVariables(new ArrayList<>());
-    }
-    NestedSpecificAttribute nestedSpecificAttribute = new NestedSpecificAttribute();
-    nestedSpecificAttribute.setName(name);
-    nestedSpecificAttribute.setValueDate(null);
-    nestedSpecificAttribute.setValueDouble(null);
-    nestedSpecificAttribute.setValueLong(null);
-    nestedSpecificAttribute.setValueDate(null);
-    if (value.stringValue() != null){
-      nestedSpecificAttribute.setValueString(value.stringValue());
-    } else if (value.longValue() != null){
-      nestedSpecificAttribute.setValueLong(value.longValue());
-    } else if (value.doubleValue() != null){
-      nestedSpecificAttribute.setValueDouble(value.doubleValue());
-    } else if (value.dateValue() != null){
-      nestedSpecificAttribute.setValueDate(value.dateValue());
-    } else {
-      throw new IllegalArgumentException();
-    }
-    model.getProcessVariables().add(nestedSpecificAttribute);
-    if (StringUtils.isNotEmpty(model.getParentId())){
-      handleVariableAdded(model.getParentId(), name, value);
-    }
-    model.setVersion(model.getVersion() + 1);
-    repository.save(model);
-  }
 
   @EventHandler
   void handle(ParentSet event){
-    ElasticModelNested model = repository.findById(event.id()).orElseThrow();
-    model.setParentId(event.parentId());
-    model.setVersion(model.getVersion() + 1);
-    repository.save(model);
+//    ElasticModelNested model = repository.findById(event.getId()).orElseThrow();
+//    model.setParentId(event.getParentId());
+//    model.setVersion(model.getVersion() + 1);
+//    repository.save(model);
+
+    final String updateScript = "ctx._source.id = params.id; ctx._source.parentId = params.parentId;";
+
+    UpdateQuery query = UpdateQuery.builder(event.getId())
+        .withScriptedUpsert(Boolean.TRUE)
+        .withScript(updateScript)
+        .withParams(
+            Map.of(
+                "id", event.getId(),
+                "parentId", event.getParentId()
+            ))
+        .withScriptType(ScriptType.INLINE)
+        .withUpsert(Document.create())
+        .build();
+
+    elasticsearchTemplate.update(query, IndexCoordinates.of("model-nested"));
+
     ongoingTime.set(System.currentTimeMillis());
   }
 

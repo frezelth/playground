@@ -1,10 +1,11 @@
 package eu.altfive.playground;
 
+import com.google.protobuf.Timestamp;
 import eu.altfive.playground.command.AddVariable;
 import eu.altfive.playground.command.CreateModel;
 import eu.altfive.playground.command.SetParent;
-import eu.altfive.playground.command.VariableValue;
 import eu.altfive.playground.projection.model.ElasticModelNested.NestedSpecificAttribute;
+import eu.europa.ec.cc.variables.proto.VariableValue;
 import java.io.Serializable;
 import java.time.LocalDate;
 import java.time.ZoneOffset;
@@ -37,7 +38,7 @@ public class Load {
   private static final int TOTAL_NUMBER_OF_AGGREGATES = 10000;
 
   private final Random random = new Random();
-  private final StringRandomizer stringRandomizer = new StringRandomizer();
+  private final StringRandomizer stringRandomizer = new StringRandomizer(40);
   private final LongRangeRandomizer longRangeRandomizer = new LongRangeRandomizer(0L, 1000L);
   private final DoubleRangeRandomizer doubleRandomizer = new DoubleRangeRandomizer(0.0, 1000.0);
   private final DateRandomizer dateRandomizer = new DateRandomizer();
@@ -85,19 +86,18 @@ public class Load {
         brokerSimulator.sendCommand(aggregateId, new SetParent(aggregateId, parentId));
       }
 
-      for (int i=0;i<5;i++){
+      for (int i=0;i<50;i++){
         int r = random.nextInt(4);
         if (r == 0){
           brokerSimulator.sendCommand(aggregateId, new AddVariable(aggregateId,
-              UUID.randomUUID().toString(), new VariableValue(stringRandomizer.getRandomValue(), null, null, null)));
+              UUID.randomUUID().toString(), eu.europa.ec.cc.variables.proto.VariableValue.newBuilder().setStringValue(stringRandomizer.getRandomValue()).build()));
         } else if (r == 1){
-          brokerSimulator.sendCommand(aggregateId, new AddVariable(aggregateId, UUID.randomUUID().toString(), new VariableValue(null, longRangeRandomizer.getRandomValue(), null, null)));
+          brokerSimulator.sendCommand(aggregateId, new AddVariable(aggregateId, UUID.randomUUID().toString(), eu.europa.ec.cc.variables.proto.VariableValue.newBuilder().setLongValue(longRangeRandomizer.getRandomValue()).build()));
         } else if (r == 2){
-          brokerSimulator.sendCommand(aggregateId, new AddVariable(aggregateId, UUID.randomUUID().toString(), new VariableValue(null, null,
-              doubleRandomizer.getRandomValue(), null)));
+          brokerSimulator.sendCommand(aggregateId, new AddVariable(aggregateId, UUID.randomUUID().toString(), eu.europa.ec.cc.variables.proto.VariableValue.newBuilder().setDoubleValue(doubleRandomizer.getRandomValue()).build()));
         } else {
-          brokerSimulator.sendCommand(aggregateId, new AddVariable(aggregateId, UUID.randomUUID().toString(), new VariableValue(null, null,
-              null, dateRandomizer.getRandomValue())));
+          brokerSimulator.sendCommand(aggregateId, new AddVariable(aggregateId, UUID.randomUUID().toString(), VariableValue.newBuilder().setTimeValue(
+              Timestamp.newBuilder().setSeconds(dateRandomizer.getRandomValue().getTime() / 1000).build()).build()));
         }
       }
 

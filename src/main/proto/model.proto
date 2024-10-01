@@ -1,0 +1,12 @@
+syntax = "proto3";
+
+option java_package = "eu.altfive.playground.foundation.axon";
+
+// so that each message is defined in a different class
+option java_multiple_files = true;
+
+package agriflow.playground.foundation.axon;
+
+message MetaData {
+  map<string,string> values = 1;
+}

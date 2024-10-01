@@ -7,7 +7,7 @@ import org.springframework.stereotype.Component;
 @Component
 public class BrokerSimulator {
 
-  private static final int NUMBER_OF_THREADS = 30;
+  private static final int NUMBER_OF_THREADS = 50;
   private LinkedBlockingQueue<Object>[] queues;
   private ConsumerThread[] consumers;
   private CommandGateway commandGateway;
