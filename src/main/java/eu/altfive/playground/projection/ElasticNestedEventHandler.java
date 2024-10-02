@@ -11,6 +11,7 @@ import eu.altfive.playground.projection.repository.ElasticModelNestedRepository;
 import eu.europa.ec.cc.variables.proto.VariableValue;
 import eu.europa.ec.cc.variables.proto.VariableValue.KindCase;
 import io.micrometer.common.util.StringUtils;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.HashMap;
@@ -20,11 +21,19 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.stream.Collectors;
+import org.apache.kafka.clients.producer.ProducerRecord;
+import org.apache.kafka.common.header.Header;
+import org.apache.kafka.common.header.internals.RecordHeader;
 import org.axonframework.commandhandling.gateway.CommandGateway;
 import org.axonframework.config.ProcessingGroup;
+import org.axonframework.eventhandling.DomainEventMessage;
 import org.axonframework.eventhandling.EventHandler;
+import org.axonframework.eventhandling.GenericDomainEventMessage;
+import org.axonframework.eventhandling.GenericEventMessage;
 import org.axonframework.eventhandling.SequenceNumber;
 import org.axonframework.eventhandling.TrackingToken;
+import org.axonframework.extensions.kafka.eventhandling.producer.KafkaPublisher;
+import org.axonframework.messaging.MetaData;
 import org.axonframework.messaging.annotation.SourceId;
 import org.axonframework.messaging.unitofwork.UnitOfWork;
 import org.slf4j.Logger;
@@ -33,10 +42,11 @@ import org.springframework.data.elasticsearch.BulkFailureException;
 import org.springframework.data.elasticsearch.client.elc.ElasticsearchTemplate;
 import org.springframework.data.elasticsearch.core.mapping.IndexCoordinates;
 import org.springframework.data.elasticsearch.core.query.UpdateQuery;
+import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
-@ProcessingGroup("elastic-nested")
+//@ProcessingGroup("elastic-nested")
 @Component
 public class ElasticNestedEventHandler {
 
@@ -48,16 +58,16 @@ public class ElasticNestedEventHandler {
   private static final AtomicLong ongoingTime = new AtomicLong(0);
   private static final AtomicLong lastCheckTime = new AtomicLong(0);
   private final ElasticsearchTemplate elasticsearchTemplate;
-  private final CommandGateway commandGateway;
+  private final KafkaTemplate<String, byte[]> kafkaTemplate;
 
   public ElasticNestedEventHandler(
       ElasticsearchTemplate elasticsearchTemplate,
-      CommandGateway commandGateway,
+      KafkaTemplate<String, byte[]> kafkaTemplate,
       ElasticModelNestedRepository repository
   ) {
     this.repository = repository;
     this.elasticsearchTemplate = elasticsearchTemplate;
-    this.commandGateway = commandGateway;
+    this.kafkaTemplate = kafkaTemplate;
   }
 
   @Scheduled(initialDelay = 10000, fixedDelay = 5000)
@@ -68,11 +78,13 @@ public class ElasticNestedEventHandler {
     lastCheckTime.set(ongoingTime.longValue());
   }
 
-  @EventHandler
-  void handle(ModelCreated event, @SourceId String aggregateIdentifier, @SequenceNumber Long sequenceNumber, UnitOfWork<?> unitOfWork){
+  void handle(
+      Map<String,ElasticModelNested> documents,
+      ModelCreated event){
     if (startTime.longValue() == 0){
       startTime.set(System.currentTimeMillis());
     }
+    ElasticModelNested model = documents.get(event.getId());
 
 //    final String updateScript = "ctx._source.id = params.id; ctx._source.name = params.name;";
 //
@@ -88,27 +100,17 @@ public class ElasticNestedEventHandler {
 //        .withUpsert(Document.create())
 //        .build();
 
-    ElasticModelNested model = getOngoingBatchRecord(unitOfWork, event.getId(), sequenceNumber, true);
-
-    if (model.getLastEventsPerAggregateStored().get(aggregateIdentifier) != null &&
-        model.getLastEventsPerAggregateStored().get(aggregateIdentifier) >= sequenceNumber){
-      return;
-    }
-
     model.setId(event.getId());
     model.setName(event.getName());
-    model.setLastEventsPerAggregate(new HashMap<>());
-    model.getLastEventsPerAggregate().put(aggregateIdentifier, sequenceNumber);
-    model.setModified(true);
 
     ongoingTime.set(System.currentTimeMillis());
   }
 
-  @EventHandler
-  void handle(VariableAdded event, @SourceId String aggregateIdentifier, @SequenceNumber Long sequenceNumber, UnitOfWork<?> unitOfWork){
+  void handle(
+      Map<String,ElasticModelNested> documents, VariableAdded event){
 //    ElasticModelNested model = repository.findById(event.id()).orElseThrow();
 //    ElasticModelNested model = getOngoingBatchRecord(unitOfWork, event.getId(), false);
-    handleVariableAdded(event.getId(), event.getName(), event.getValue(), unitOfWork, aggregateIdentifier, sequenceNumber);
+    handleVariableAdded(documents, event.getId(), event.getName(), event.getValue());
 //    repository.save(model);
 
 //    final String updateScript = "if (ctx._source.processVariables == null){ ctx._source.processVariables = new ArrayList(); } ctx._source.processVariables.add(params.processVariable);";
@@ -165,72 +167,59 @@ public class ElasticNestedEventHandler {
     ongoingTime.set(System.currentTimeMillis());
   }
 
-  private void handleVariableAdded(String id, String name, VariableValue value, UnitOfWork<?> unitOfWork,
-      String aggregateIdentifier, Long sequenceNumber) {
-    ElasticModelNested model = getOngoingBatchRecord(unitOfWork, id, sequenceNumber, false);
-
-    //      commandGateway.sendAndWait(new AddVariable(model.getParentId(), name, value));
-    //      brokerSimulator.sendCommand(model.getParentId(), new AddVariable(model.getParentId(), name, value));
-    if (model.getLastEventsPerAggregateStored().get(aggregateIdentifier) == null ||
-        model.getLastEventsPerAggregateStored().get(aggregateIdentifier) < sequenceNumber) {
+  private void handleVariableAdded(
+      Map<String,ElasticModelNested> documents, String id, String name, VariableValue value) {
+    ElasticModelNested model = documents.get(id);
 
 //    ElasticModelNested model = repository.findById(modelId).orElseThrow();
-      if (model.getProcessVariables() == null) {
-        model.setProcessVariables(new ArrayList<>());
-      }
-      NestedSpecificAttribute nestedSpecificAttribute = new NestedSpecificAttribute();
-      nestedSpecificAttribute.setName(name);
-      nestedSpecificAttribute.setValueDate(null);
-      nestedSpecificAttribute.setValueDouble(null);
-      nestedSpecificAttribute.setValueLong(null);
-      nestedSpecificAttribute.setValueDate(null);
-
-      if (value.getKindCase() == KindCase.STRINGVALUE) {
-        nestedSpecificAttribute.setValueString(value.getStringValue());
-      } else if (value.getKindCase() == KindCase.LONGVALUE) {
-        nestedSpecificAttribute.setValueLong(value.getLongValue());
-      } else if (value.getKindCase() == KindCase.DOUBLEVALUE) {
-        nestedSpecificAttribute.setValueDouble(value.getDoubleValue());
-      } else if (value.getKindCase() == KindCase.TIMEVALUE) {
-        nestedSpecificAttribute.setValueDate(new Date(value.getTimeValue().getSeconds() * 1000));
-      } else {
-        throw new IllegalArgumentException();
-      }
-
-      model.getLastEventsPerAggregate().put(aggregateIdentifier, sequenceNumber);
-      model.setModified(true);
-
-      model.getProcessVariables().add(nestedSpecificAttribute);
-      //    model.setVersion(model.getVersion() + 1);
-//    repository.save(model);
+    if (model.getProcessVariables() == null) {
+      model.setProcessVariables(new ArrayList<>());
     }
+    NestedSpecificAttribute nestedSpecificAttribute = new NestedSpecificAttribute();
+    nestedSpecificAttribute.setName(name);
+    nestedSpecificAttribute.setValueDate(null);
+    nestedSpecificAttribute.setValueDouble(null);
+    nestedSpecificAttribute.setValueLong(null);
+    nestedSpecificAttribute.setValueDate(null);
+
+    if (value.getKindCase() == KindCase.STRINGVALUE) {
+      nestedSpecificAttribute.setValueString(value.getStringValue());
+    } else if (value.getKindCase() == KindCase.LONGVALUE) {
+      nestedSpecificAttribute.setValueLong(value.getLongValue());
+    } else if (value.getKindCase() == KindCase.DOUBLEVALUE) {
+      nestedSpecificAttribute.setValueDouble(value.getDoubleValue());
+    } else if (value.getKindCase() == KindCase.TIMEVALUE) {
+      nestedSpecificAttribute.setValueDate(new Date(value.getTimeValue().getSeconds() * 1000));
+    } else {
+      throw new IllegalArgumentException();
+    }
+
+    model.getProcessVariables().add(nestedSpecificAttribute);
     if (StringUtils.isNotEmpty(model.getParentId())){
-      handleVariableAdded(model.getParentId(), name, value, unitOfWork, aggregateIdentifier, sequenceNumber);
+
+      kafkaTemplate.send(
+          new ProducerRecord<>(
+              "cc-local-event",
+              null, model.getParentId(),
+              VariableAdded.newBuilder()
+                  .setId(model.getParentId())
+                  .setName(name)
+                  .setValue(value)
+                  .build().toByteArray(),
+              List.of(
+                  new RecordHeader("axon-message-aggregate-id", model.getParentId().getBytes(StandardCharsets.ISO_8859_1)),
+                  new RecordHeader("axon-message-type",VariableAdded.class.getTypeName().getBytes(
+                      StandardCharsets.ISO_8859_1))
+              ))
+          );
     }
 
   }
 
-  @EventHandler
-  void handle(VariableUpdated event, UnitOfWork<?> unitOfWork){
-//    ElasticModelNested model = repository.findById(event.id()).orElseThrow();
-//    handleVariableUpdated(event.id(), event.name(), event.value(), unitOfWork);
-//    repository.save(model);
-    ongoingTime.set(System.currentTimeMillis());
-  }
+  void handle(Map<String,ElasticModelNested> documents, ParentSet event){
+    ElasticModelNested model = documents.get(event.getId());
 
-  @EventHandler
-  void handle(ParentSet event, @SourceId String aggregateIdentifier, @SequenceNumber Long sequenceNumber, UnitOfWork<?> unitOfWork){
-    ElasticModelNested model = getOngoingBatchRecord(unitOfWork, event.getId(), sequenceNumber, false);
-
-    if (model.getLastEventsPerAggregateStored().get(aggregateIdentifier) != null &&
-        model.getLastEventsPerAggregateStored().get(aggregateIdentifier) >= sequenceNumber){
-      return;
-    }
-
-    model.getLastEventsPerAggregate().put(aggregateIdentifier, sequenceNumber);
-//    ElasticModelNested model = repository.findById(event.id()).orElseThrow();
     model.setParentId(event.getParentId());
-    model.setModified(true);
 //    model.setVersion(model.getVersion() + 1);
 //    repository.save(model);
 
@@ -251,63 +240,6 @@ public class ElasticNestedEventHandler {
 //    addOperation(unitOfWork, query);
 
     ongoingTime.set(System.currentTimeMillis());
-  }
-
-  private ElasticModelNested getOngoingBatchRecord(UnitOfWork<?> unitOfWork, String aggregateId,
-      Long sequenceNumber,
-      boolean create){
-
-    Map<String, BatchRecord> currentBatch = unitOfWork.getOrComputeResource(
-        "current-es-batch-"+Thread.currentThread().getName(), k -> {
-          Map<String, BatchRecord> map = new HashMap<>();
-          unitOfWork.onPrepareCommit(uow -> {
-            // check for changes
-
-            Set<ElasticModelNested> toSave = map.values()
-                .stream()
-                // only process events that have not been processed yet
-                .filter(record ->
-                  // for each agg
-                  record.record().isModified()
-                )
-                .peek(model -> model.record().setVersion(model.record().getVersion() == null ?
-                    0 : model.record().getVersion() + 1))
-                .map(BatchRecord::record)
-                .collect(Collectors.toSet());
-
-            if (toSave.size() < map.size()){
-              LOGGER.info("Saving less");
-            }
-
-            try {
-              repository.saveAll(toSave);
-            } catch (BulkFailureException e){
-//              Set<String> processedDocuments = toSave.stream()
-//                  .map(ElasticModelNested::getId)
-//                  .collect(Collectors.toSet());
-//              processedDocuments.removeAll(e.getFailedDocuments().keySet());
-              LOGGER.error("Error", e);
-              throw e;
-            }
-          });
-          return map;
-        });
-    if (currentBatch.get(aggregateId) == null){
-      ElasticModelNested model = repository.findById(aggregateId).orElseGet(() -> {
-        ElasticModelNested elasticModelNested = new ElasticModelNested();
-        elasticModelNested.setId(aggregateId);
-        elasticModelNested.setLastEventsPerAggregate(new HashMap<>());
-        return elasticModelNested;
-      });
-      model.setLastEventsPerAggregateStored(new HashMap<>(model.getLastEventsPerAggregate()));
-      currentBatch.put(aggregateId, new BatchRecord(model, new HashMap<>(model.getLastEventsPerAggregate())));
-    }
-//    if (create){
-//      currentBatch.put(aggregateId, new ElasticModelNested());
-//    } else if (currentBatch.get(aggregateId) == null){
-//      currentBatch.put(aggregateId, repository.findById(aggregateId).orElseThrow());
-//    }
-    return currentBatch.get(aggregateId).record();
   }
 
 

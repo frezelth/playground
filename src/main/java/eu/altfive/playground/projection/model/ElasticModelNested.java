@@ -16,6 +16,13 @@ import org.springframework.data.elasticsearch.annotations.Mapping;
 @Document(indexName = "model-nested")
 public class ElasticModelNested {
 
+  public ElasticModelNested() {
+  }
+
+  public ElasticModelNested(String id) {
+    this.id = id;
+  }
+
   @Id
   @Field(type = FieldType.Keyword)
   private String id;
@@ -29,15 +36,6 @@ public class ElasticModelNested {
   @Version
   @Field(type = FieldType.Long)
   private Long version = 0L;
-
-  @Field(type = FieldType.Flattened)
-  private Map<String, Long> lastEventsPerAggregate;
-
-  @Transient
-  private Map<String, Long> lastEventsPerAggregateStored;
-
-  @Transient
-  private transient boolean modified;
 
   private String parentId;
 
@@ -80,32 +78,6 @@ public class ElasticModelNested {
 
   public void setName(String name) {
     this.name = name;
-  }
-
-  public Map<String, Long> getLastEventsPerAggregate() {
-    return lastEventsPerAggregate;
-  }
-
-  public void setLastEventsPerAggregate(
-      Map<String, Long> lastEventsPerAggregate) {
-    this.lastEventsPerAggregate = lastEventsPerAggregate;
-  }
-
-  public Map<String, Long> getLastEventsPerAggregateStored() {
-    return lastEventsPerAggregateStored;
-  }
-
-  public void setLastEventsPerAggregateStored(
-      Map<String, Long> lastEventsPerAggregateStored) {
-    this.lastEventsPerAggregateStored = lastEventsPerAggregateStored;
-  }
-
-  public boolean isModified() {
-    return modified;
-  }
-
-  public void setModified(boolean modified) {
-    this.modified = modified;
   }
 
   public static class NestedSpecificAttribute {
