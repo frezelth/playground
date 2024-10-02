@@ -3,7 +3,9 @@ package eu.altfive.playground.projection.model;
 
 import java.util.Date;
 import java.util.List;
+import java.util.Map;
 import org.springframework.data.annotation.Id;
+import org.springframework.data.annotation.Transient;
 import org.springframework.data.annotation.Version;
 import org.springframework.data.elasticsearch.annotations.Document;
 import org.springframework.data.elasticsearch.annotations.DynamicTemplates;
@@ -27,6 +29,15 @@ public class ElasticModelNested {
   @Version
   @Field(type = FieldType.Long)
   private Long version = 0L;
+
+  @Field(type = FieldType.Flattened)
+  private Map<String, Long> lastEventsPerAggregate;
+
+  @Transient
+  private Map<String, Long> lastEventsPerAggregateStored;
+
+  @Transient
+  private transient boolean modified;
 
   private String parentId;
 
@@ -69,6 +80,32 @@ public class ElasticModelNested {
 
   public void setName(String name) {
     this.name = name;
+  }
+
+  public Map<String, Long> getLastEventsPerAggregate() {
+    return lastEventsPerAggregate;
+  }
+
+  public void setLastEventsPerAggregate(
+      Map<String, Long> lastEventsPerAggregate) {
+    this.lastEventsPerAggregate = lastEventsPerAggregate;
+  }
+
+  public Map<String, Long> getLastEventsPerAggregateStored() {
+    return lastEventsPerAggregateStored;
+  }
+
+  public void setLastEventsPerAggregateStored(
+      Map<String, Long> lastEventsPerAggregateStored) {
+    this.lastEventsPerAggregateStored = lastEventsPerAggregateStored;
+  }
+
+  public boolean isModified() {
+    return modified;
+  }
+
+  public void setModified(boolean modified) {
+    this.modified = modified;
   }
 
   public static class NestedSpecificAttribute {

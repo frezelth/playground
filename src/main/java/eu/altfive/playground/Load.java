@@ -33,9 +33,9 @@ import org.springframework.stereotype.Component;
 @Component
 public class Load {
 
-  private final BrokerSimulator brokerSimulator;
+  private final CommandGateway commandGateway;
 
-  private static final int TOTAL_NUMBER_OF_AGGREGATES = 10000;
+  private static final int TOTAL_NUMBER_OF_AGGREGATES = 1000;
 
   private final Random random = new Random();
   private final StringRandomizer stringRandomizer = new StringRandomizer(40);
@@ -43,8 +43,8 @@ public class Load {
   private final DoubleRangeRandomizer doubleRandomizer = new DoubleRangeRandomizer(0.0, 1000.0);
   private final DateRandomizer dateRandomizer = new DateRandomizer();
 
-  public Load(BrokerSimulator brokerSimulator) {
-    this.brokerSimulator = brokerSimulator;
+  public Load(CommandGateway commandGateway) {
+    this.commandGateway = commandGateway;
   }
 
   @EventListener
@@ -53,7 +53,9 @@ public class Load {
     List<String> aggregateIds = new ArrayList<>();
     // list with all aggregates
     for (int i=0; i<TOTAL_NUMBER_OF_AGGREGATES; i++) {
-      aggregateIds.add(UUID.randomUUID().toString());
+      String aggregateId = UUID.randomUUID().toString();
+      aggregateIds.add(aggregateId);
+      commandGateway.sendAndWait(new CreateModel(aggregateId, "name_" + aggregateId));
     }
 
     // 50% = top processes
@@ -61,48 +63,23 @@ public class Load {
     // 15% = second level children
     // 10% = third level children
     // 5% = fourth level children
-    List<String> firstChildren = aggregateIds.subList(0, (int)Math.round(aggregateIds.size() * 0.2));
-    List<String> secondChildren = aggregateIds.subList(firstChildren.size(), firstChildren.size() + (int)Math.round(aggregateIds.size() * 0.15));
-    List<String> thirdChildren = aggregateIds.subList(firstChildren.size() + secondChildren.size(), firstChildren.size() + secondChildren.size() + (int)Math.round(aggregateIds.size() * 0.1));
-    List<String> fourthChildren = aggregateIds.subList(firstChildren.size() + secondChildren.size() + thirdChildren.size(), firstChildren.size() + secondChildren.size() + thirdChildren.size() + (int)Math.round(aggregateIds.size() * 0.05));
-
-    List<String> rootLevel = aggregateIds.subList(firstChildren.size() + secondChildren.size() + thirdChildren.size() + fourthChildren.size(),
-        aggregateIds.size());
-
-    Map<String,String> childToParent = new HashMap<>();
-
-    fourthChildren.forEach(s -> childToParent.put(s, thirdChildren.get(random.nextInt(
-        thirdChildren.size()))));
-    thirdChildren.forEach(s -> childToParent.put(s, secondChildren.get(random.nextInt(
-        secondChildren.size()))));
-    secondChildren.forEach(s -> childToParent.put(s, firstChildren.get(random.nextInt(
-        firstChildren.size()))));
-    firstChildren.forEach(s -> childToParent.put(s, rootLevel.get(random.nextInt(rootLevel.size()))));
-
-    for (String aggregateId : aggregateIds) {
-      brokerSimulator.sendCommand(aggregateId, new CreateModel(aggregateId, "name_"+aggregateId));
-      String parentId = childToParent.get(aggregateId);
-      if (parentId != null){
-        brokerSimulator.sendCommand(aggregateId, new SetParent(aggregateId, parentId));
-      }
-
-      for (int i=0;i<50;i++){
-        int r = random.nextInt(4);
-        if (r == 0){
-          brokerSimulator.sendCommand(aggregateId, new AddVariable(aggregateId,
-              UUID.randomUUID().toString(), eu.europa.ec.cc.variables.proto.VariableValue.newBuilder().setStringValue(stringRandomizer.getRandomValue()).build()));
-        } else if (r == 1){
-          brokerSimulator.sendCommand(aggregateId, new AddVariable(aggregateId, UUID.randomUUID().toString(), eu.europa.ec.cc.variables.proto.VariableValue.newBuilder().setLongValue(longRangeRandomizer.getRandomValue()).build()));
-        } else if (r == 2){
-          brokerSimulator.sendCommand(aggregateId, new AddVariable(aggregateId, UUID.randomUUID().toString(), eu.europa.ec.cc.variables.proto.VariableValue.newBuilder().setDoubleValue(doubleRandomizer.getRandomValue()).build()));
-        } else {
-          brokerSimulator.sendCommand(aggregateId, new AddVariable(aggregateId, UUID.randomUUID().toString(), VariableValue.newBuilder().setTimeValue(
-              Timestamp.newBuilder().setSeconds(dateRandomizer.getRandomValue().getTime() / 1000).build()).build()));
-        }
-      }
-
-    }
-
+//    List<String> firstChildren = aggregateIds.subList(0, (int)Math.round(aggregateIds.size() * 0.2));
+//    List<String> secondChildren = aggregateIds.subList(firstChildren.size(), firstChildren.size() + (int)Math.round(aggregateIds.size() * 0.15));
+//    List<String> thirdChildren = aggregateIds.subList(firstChildren.size() + secondChildren.size(), firstChildren.size() + secondChildren.size() + (int)Math.round(aggregateIds.size() * 0.1));
+//    List<String> fourthChildren = aggregateIds.subList(firstChildren.size() + secondChildren.size() + thirdChildren.size(), firstChildren.size() + secondChildren.size() + thirdChildren.size() + (int)Math.round(aggregateIds.size() * 0.05));
+//
+//    List<String> rootLevel = aggregateIds.subList(firstChildren.size() + secondChildren.size() + thirdChildren.size() + fourthChildren.size(),
+//        aggregateIds.size());
+//
+//    Map<String,String> childToParent = new HashMap<>();
+//
+//    fourthChildren.forEach(s -> childToParent.put(s, thirdChildren.get(random.nextInt(
+//        thirdChildren.size()))));
+//    thirdChildren.forEach(s -> childToParent.put(s, secondChildren.get(random.nextInt(
+//        secondChildren.size()))));
+//    secondChildren.forEach(s -> childToParent.put(s, firstChildren.get(random.nextInt(
+//        firstChildren.size()))));
+//    firstChildren.forEach(s -> childToParent.put(s, rootLevel.get(random.nextInt(rootLevel.size()))));
 
 //    for (String aggregateId : aggregateIds) {
 //      commandGateway.sendAndWait(new CreateModel(aggregateId, "name_"+aggregateId));
@@ -111,23 +88,62 @@ public class Load {
 //        commandGateway.sendAndWait(new SetParent(aggregateId, parentId));
 //      }
 //
-//      for (int i=0;i<5;i++){
+//      for (int i=0;i<50;i++){
 //        int r = random.nextInt(4);
 //        if (r == 0){
-//          commandGateway.sendAndWait(new AddVariable(aggregateId,
-//              UUID.randomUUID().toString(), new VariableValue(stringRandomizer.getRandomValue(), null, null, null)));
+//          commandGateway.send(new AddVariable(aggregateId,
+//              UUID.randomUUID().toString(), eu.europa.ec.cc.variables.proto.VariableValue.newBuilder().setStringValue(stringRandomizer.getRandomValue()).build()));
 //        } else if (r == 1){
-//          commandGateway.sendAndWait(new AddVariable(aggregateId, UUID.randomUUID().toString(), new VariableValue(null, longRangeRandomizer.getRandomValue(), null, null)));
+//          commandGateway.send(new AddVariable(aggregateId, UUID.randomUUID().toString(), eu.europa.ec.cc.variables.proto.VariableValue.newBuilder().setLongValue(longRangeRandomizer.getRandomValue()).build()));
 //        } else if (r == 2){
-//          commandGateway.sendAndWait(new AddVariable(aggregateId, UUID.randomUUID().toString(), new VariableValue(null, null,
-//              doubleRandomizer.getRandomValue(), null)));
+//          commandGateway.send(new AddVariable(aggregateId, UUID.randomUUID().toString(), eu.europa.ec.cc.variables.proto.VariableValue.newBuilder().setDoubleValue(doubleRandomizer.getRandomValue()).build()));
 //        } else {
-//          commandGateway.sendAndWait(new AddVariable(aggregateId, UUID.randomUUID().toString(), new VariableValue(null, null,
-//              null, dateRandomizer.getRandomValue())));
+//          commandGateway.send(new AddVariable(aggregateId, UUID.randomUUID().toString(), VariableValue.newBuilder().setTimeValue(
+//              Timestamp.newBuilder().setSeconds(dateRandomizer.getRandomValue().getTime() / 1000).build()).build()));
 //        }
 //      }
 //
 //    }
+
+    for (int i=0;i<TOTAL_NUMBER_OF_AGGREGATES / 5;i++){
+      commandGateway.sendAndWait(new SetParent(aggregateIds.get(i + (TOTAL_NUMBER_OF_AGGREGATES / 5)), aggregateIds.get(i)));
+      commandGateway.sendAndWait(new SetParent(aggregateIds.get(i + ((TOTAL_NUMBER_OF_AGGREGATES / 5) * 2)), aggregateIds.get(i + (TOTAL_NUMBER_OF_AGGREGATES / 5))));
+      commandGateway.sendAndWait(new SetParent(aggregateIds.get(i + ((TOTAL_NUMBER_OF_AGGREGATES / 5) * 3)), aggregateIds.get(i + ((TOTAL_NUMBER_OF_AGGREGATES / 5) * 2))));
+      commandGateway.sendAndWait(new SetParent(aggregateIds.get(i + ((TOTAL_NUMBER_OF_AGGREGATES / 5) * 4)), aggregateIds.get(i + ((TOTAL_NUMBER_OF_AGGREGATES / 5) * 3))));
+//      commandGateway.sendAndWait(new CreateModel(aggregateId, "name_" + aggregateId));
+    }
+
+    for (int i = 0; i < 50; i++) {
+//      int aggIdx = random.nextInt(aggregateIds.size());
+//      String aggregateId = aggregateIds.get(aggIdx);
+
+      for (int j=0;j<TOTAL_NUMBER_OF_AGGREGATES;j++) {
+        String aggregateId = aggregateIds.get(j);
+
+        int r = random.nextInt(4);
+        if (r == 0) {
+          commandGateway.send(new AddVariable(aggregateId,
+              UUID.randomUUID().toString(),
+              eu.europa.ec.cc.variables.proto.VariableValue.newBuilder()
+                  .setStringValue(stringRandomizer.getRandomValue()).build()));
+        } else if (r == 1) {
+          commandGateway.send(new AddVariable(aggregateId, UUID.randomUUID().toString(),
+              eu.europa.ec.cc.variables.proto.VariableValue.newBuilder()
+                  .setLongValue(longRangeRandomizer.getRandomValue()).build()));
+        } else if (r == 2) {
+          commandGateway.send(new AddVariable(aggregateId, UUID.randomUUID().toString(),
+              eu.europa.ec.cc.variables.proto.VariableValue.newBuilder()
+                  .setDoubleValue(doubleRandomizer.getRandomValue()).build()));
+        } else {
+          commandGateway.send(new AddVariable(aggregateId, UUID.randomUUID().toString(),
+              VariableValue.newBuilder().setTimeValue(
+                      Timestamp.newBuilder()
+                          .setSeconds(dateRandomizer.getRandomValue().getTime() / 1000).build())
+                  .build()));
+        }
+      }
+
+    }
 
 //
 //    EasyRandomParameters parameters = new EasyRandomParameters();

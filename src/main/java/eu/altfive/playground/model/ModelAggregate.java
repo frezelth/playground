@@ -14,15 +14,14 @@ import org.axonframework.modelling.command.AggregateLifecycle;
 import org.axonframework.spring.stereotype.Aggregate;
 import org.springframework.util.StringUtils;
 
-@Aggregate(
-    snapshotTriggerDefinition = "snapshotTrigger",
-cache = "axonCache")
+@Aggregate
 public class ModelAggregate {
 
   @AggregateIdentifier
   private String id;
   private String name;
   private String parentId;
+
 //  private final Map<String, VariableValue> processVariables = new HashMap<>();
 
   public ModelAggregate() {
