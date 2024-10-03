@@ -19,6 +19,7 @@ import org.axonframework.extensions.kafka.eventhandling.KafkaMessageConverter;
 import org.axonframework.serialization.Serializer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.context.ApplicationContext;
 import org.springframework.kafka.annotation.KafkaListener;
 import org.springframework.kafka.support.KafkaHeaders;
 import org.springframework.messaging.handler.annotation.Header;
@@ -31,11 +32,16 @@ public class ElasticProjection {
   private final static Logger LOGGER = LoggerFactory.getLogger(ElasticProjection.class);
   private final ElasticModelNestedRepository repository;
   private final ElasticNestedEventHandler elasticNestedEventHandler;
+  private final ApplicationContext applicationContext;
+
+  public static ThreadLocal<ElasticModelNested> currentDocument = new ThreadLocal<>();
 
   public ElasticProjection(ElasticModelNestedRepository repository,
-      ElasticNestedEventHandler elasticNestedEventHandler) {
+      ElasticNestedEventHandler elasticNestedEventHandler,
+      ApplicationContext applicationContext) {
     this.repository = repository;
     this.elasticNestedEventHandler = elasticNestedEventHandler;
+    this.applicationContext = applicationContext;
   }
 
   @KafkaListener(
@@ -70,13 +76,21 @@ public class ElasticProjection {
 
     for (int i = 0; i < messages.size(); i++) {
       Class<?> messageType = Class.forName(new String((byte[])headers.get(i).get("axon-message-type")));
-      Message message = (Message) messageType.getMethod("parseFrom", byte[].class).invoke(null, (Object)messages.get(i));
-      if (message instanceof ModelCreated modelCreated){
-        elasticNestedEventHandler.handle(documentsPerId, modelCreated);
-      } else if (message instanceof VariableAdded variableAdded){
-        elasticNestedEventHandler.handle(documentsPerId, variableAdded);
-      } else if (message instanceof ParentSet parentSet){
-        elasticNestedEventHandler.handle(documentsPerId, parentSet);
+      String documentId = new String((byte[])headers.get(i).get("axon-message-aggregate-id"));
+      try {
+        currentDocument.set(documentsPerId.get(documentId));
+        Message message = (Message) messageType.getMethod("parseFrom", byte[].class)
+            .invoke(null, (Object) messages.get(i));
+//        if (message instanceof ModelCreated modelCreated){
+//          elasticNestedEventHandler.handle(modelCreated);
+//        } else if (message instanceof VariableAdded variableAdded){
+//          elasticNestedEventHandler.handle(variableAdded);
+//        } else if (message instanceof ParentSet parentSet){
+//          elasticNestedEventHandler.handle(parentSet);
+//        }
+        applicationContext.publishEvent(message);
+      } finally {
+        currentDocument.remove();
       }
     }
 

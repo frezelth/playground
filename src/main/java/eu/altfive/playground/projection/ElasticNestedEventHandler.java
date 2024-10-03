@@ -38,6 +38,7 @@ import org.axonframework.messaging.annotation.SourceId;
 import org.axonframework.messaging.unitofwork.UnitOfWork;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.context.event.EventListener;
 import org.springframework.data.elasticsearch.BulkFailureException;
 import org.springframework.data.elasticsearch.client.elc.ElasticsearchTemplate;
 import org.springframework.data.elasticsearch.core.mapping.IndexCoordinates;
@@ -78,14 +79,14 @@ public class ElasticNestedEventHandler {
     lastCheckTime.set(ongoingTime.longValue());
   }
 
+  @EventListener
   void handle(
-      Map<String,ElasticModelNested> documents,
       ModelCreated event){
     if (startTime.longValue() == 0){
       startTime.set(System.currentTimeMillis());
     }
-    ElasticModelNested model = documents.get(event.getId());
-
+//    ElasticModelNested model = documents.get(event.getId());
+    ElasticModelNested model = ElasticProjection.currentDocument.get();
 //    final String updateScript = "ctx._source.id = params.id; ctx._source.name = params.name;";
 //
 //    UpdateQuery query = UpdateQuery.builder(event.getId())
@@ -106,11 +107,12 @@ public class ElasticNestedEventHandler {
     ongoingTime.set(System.currentTimeMillis());
   }
 
+  @EventListener
   void handle(
-      Map<String,ElasticModelNested> documents, VariableAdded event){
+      VariableAdded event){
 //    ElasticModelNested model = repository.findById(event.id()).orElseThrow();
 //    ElasticModelNested model = getOngoingBatchRecord(unitOfWork, event.getId(), false);
-    handleVariableAdded(documents, event.getId(), event.getName(), event.getValue());
+    handleVariableAdded(event.getName(), event.getValue());
 //    repository.save(model);
 
 //    final String updateScript = "if (ctx._source.processVariables == null){ ctx._source.processVariables = new ArrayList(); } ctx._source.processVariables.add(params.processVariable);";
@@ -168,8 +170,8 @@ public class ElasticNestedEventHandler {
   }
 
   private void handleVariableAdded(
-      Map<String,ElasticModelNested> documents, String id, String name, VariableValue value) {
-    ElasticModelNested model = documents.get(id);
+      String name, VariableValue value) {
+    ElasticModelNested model = ElasticProjection.currentDocument.get();
 
 //    ElasticModelNested model = repository.findById(modelId).orElseThrow();
     if (model.getProcessVariables() == null) {
@@ -216,8 +218,9 @@ public class ElasticNestedEventHandler {
 
   }
 
-  void handle(Map<String,ElasticModelNested> documents, ParentSet event){
-    ElasticModelNested model = documents.get(event.getId());
+  @EventListener
+  void handle(ParentSet event){
+    ElasticModelNested model = ElasticProjection.currentDocument.get();
 
     model.setParentId(event.getParentId());
 //    model.setVersion(model.getVersion() + 1);

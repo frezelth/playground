@@ -14,7 +14,7 @@ import org.axonframework.modelling.command.AggregateLifecycle;
 import org.axonframework.spring.stereotype.Aggregate;
 import org.springframework.util.StringUtils;
 
-@Aggregate
+@Aggregate(cache = "axonCache")
 public class ModelAggregate {
 
   @AggregateIdentifier

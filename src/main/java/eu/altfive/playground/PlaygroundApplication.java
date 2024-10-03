@@ -22,7 +22,7 @@ public class PlaygroundApplication {
 
 	@Bean
 	public NewTopic newTopic(){
-		return new NewTopic("cc-local-event", 10, (short) 1);
+		return new NewTopic("cc-local-event", 20, (short) 1);
 	}
 
 }

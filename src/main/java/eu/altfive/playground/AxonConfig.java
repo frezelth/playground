@@ -11,6 +11,8 @@ import org.axonframework.commandhandling.CommandBusSpanFactory;
 import org.axonframework.commandhandling.DuplicateCommandHandlerResolver;
 import org.axonframework.commandhandling.SimpleCommandBus;
 import org.axonframework.common.AxonConfigurationException;
+import org.axonframework.common.caching.Cache;
+import org.axonframework.common.caching.WeakReferenceCache;
 import org.axonframework.common.transaction.TransactionManager;
 import org.axonframework.config.Configurer;
 import org.axonframework.config.ConfigurerModule;
@@ -46,7 +48,7 @@ public class AxonConfig {
   public AsynchronousCommandBus commandBus(
       TransactionManager txManager, org.axonframework.config.Configuration axonConfiguration,
       DuplicateCommandHandlerResolver duplicateCommandHandlerResolver) {
-    Executor executor = Executors.newFixedThreadPool(30);
+    Executor executor = Executors.newFixedThreadPool(20);
     return
         AsynchronousCommandBus.builder()
             .transactionManager(txManager)
@@ -66,11 +68,10 @@ public class AxonConfig {
 //    );
   }
 
-//  @Bean
-//  public Cache axonCache(CacheManager cacheManager){
-//    org.springframework.cache.Cache axonCache = cacheManager.getCache("axonCache");
-//    return new CaffeineAdapter((com.github.benmanes.caffeine.cache.Cache)axonCache.getNativeCache());
-//  }
+  @Bean
+  public Cache axonCache(){
+    return new WeakReferenceCache();
+  }
 //
 //  @Bean
 //  public SnapshotTriggerDefinition snapshotTrigger(Snapshotter snapshotter) {
