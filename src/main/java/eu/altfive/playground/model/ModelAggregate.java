@@ -30,10 +30,7 @@ public class ModelAggregate {
   @CommandHandler
   public ModelAggregate(CreateModel command) {
     AggregateLifecycle.apply(
-        ModelCreated.newBuilder()
-            .setId(command.id())
-            .setName(command.name())
-            .build()
+        new ModelCreated(command.id(), command.name())
     );
   }
 
@@ -83,11 +80,7 @@ public class ModelAggregate {
 //      }
 //    } else {
       AggregateLifecycle.apply(
-          VariableAdded.newBuilder()
-              .setId(this.id)
-              .setName(command.name())
-              .setValue(command.value())
-              .build()
+          new VariableAdded(this.id, command.name(), command.value())
       );
 //    }
   }
@@ -106,7 +99,7 @@ public class ModelAggregate {
   public void handle(SetParent command){
     if (StringUtils.hasLength(command.parentId()) && !Objects.equals(command.parentId(), this.parentId)){
       AggregateLifecycle.apply(
-          ParentSet.newBuilder().setId(this.id).setParentId(command.parentId()).build()
+          new ParentSet(this.id, command.parentId())
       );
     }
   }

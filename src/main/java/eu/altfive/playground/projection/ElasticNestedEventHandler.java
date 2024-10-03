@@ -1,15 +1,14 @@
 package eu.altfive.playground.projection;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.google.protobuf.Message;
+import eu.altfive.playground.command.VariableValue;
 import eu.altfive.playground.event.ModelCreated;
 import eu.altfive.playground.event.ParentSet;
 import eu.altfive.playground.event.VariableAdded;
-import eu.altfive.playground.event.VariableUpdated;
 import eu.altfive.playground.projection.model.ElasticModelNested;
 import eu.altfive.playground.projection.model.ElasticModelNested.NestedSpecificAttribute;
 import eu.altfive.playground.projection.repository.ElasticModelNestedRepository;
-import eu.europa.ec.cc.variables.proto.VariableValue;
-import eu.europa.ec.cc.variables.proto.VariableValue.KindCase;
 import io.micrometer.common.util.StringUtils;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
@@ -32,6 +31,7 @@ import org.axonframework.eventhandling.GenericDomainEventMessage;
 import org.axonframework.eventhandling.GenericEventMessage;
 import org.axonframework.eventhandling.SequenceNumber;
 import org.axonframework.eventhandling.TrackingToken;
+import org.axonframework.extensions.kafka.eventhandling.KafkaMessageConverter;
 import org.axonframework.extensions.kafka.eventhandling.producer.KafkaPublisher;
 import org.axonframework.messaging.MetaData;
 import org.axonframework.messaging.annotation.SourceId;
@@ -60,15 +60,18 @@ public class ElasticNestedEventHandler {
   private static final AtomicLong lastCheckTime = new AtomicLong(0);
   private final ElasticsearchTemplate elasticsearchTemplate;
   private final KafkaTemplate<String, byte[]> kafkaTemplate;
+  private final KafkaMessageConverter<String, byte[]> messageConverter;
 
   public ElasticNestedEventHandler(
       ElasticsearchTemplate elasticsearchTemplate,
       KafkaTemplate<String, byte[]> kafkaTemplate,
-      ElasticModelNestedRepository repository
+      ElasticModelNestedRepository repository,
+      KafkaMessageConverter<String, byte[]> messageConverter
   ) {
     this.repository = repository;
     this.elasticsearchTemplate = elasticsearchTemplate;
     this.kafkaTemplate = kafkaTemplate;
+    this.messageConverter = messageConverter;
   }
 
   @Scheduled(initialDelay = 10000, fixedDelay = 5000)
@@ -183,37 +186,46 @@ public class ElasticNestedEventHandler {
     nestedSpecificAttribute.setValueDouble(null);
     nestedSpecificAttribute.setValueLong(null);
     nestedSpecificAttribute.setValueDate(null);
-
-    if (value.getKindCase() == KindCase.STRINGVALUE) {
+    if (value.getStringValue() != null){
       nestedSpecificAttribute.setValueString(value.getStringValue());
-    } else if (value.getKindCase() == KindCase.LONGVALUE) {
+    } else if (value.getLongValue() != null){
       nestedSpecificAttribute.setValueLong(value.getLongValue());
-    } else if (value.getKindCase() == KindCase.DOUBLEVALUE) {
+    } else if (value.getDoubleValue() != null){
       nestedSpecificAttribute.setValueDouble(value.getDoubleValue());
-    } else if (value.getKindCase() == KindCase.TIMEVALUE) {
-      nestedSpecificAttribute.setValueDate(new Date(value.getTimeValue().getSeconds() * 1000));
+    } else if (value.getDateValue() != null){
+      nestedSpecificAttribute.setValueDate(value.getDateValue());
     } else {
       throw new IllegalArgumentException();
     }
 
     model.getProcessVariables().add(nestedSpecificAttribute);
     if (StringUtils.isNotEmpty(model.getParentId())){
-
-      kafkaTemplate.send(
-          new ProducerRecord<>(
-              "cc-local-event",
-              null, model.getParentId(),
-              VariableAdded.newBuilder()
-                  .setId(model.getParentId())
-                  .setName(name)
-                  .setValue(value)
-                  .build().toByteArray(),
-              List.of(
-                  new RecordHeader("axon-message-aggregate-id", model.getParentId().getBytes(StandardCharsets.ISO_8859_1)),
-                  new RecordHeader("axon-message-type",VariableAdded.class.getTypeName().getBytes(
-                      StandardCharsets.ISO_8859_1))
-              ))
-          );
+      GenericDomainEventMessage<Object> genericDomainEventMessage = new GenericDomainEventMessage<>(
+          VariableAdded.class.getTypeName(),
+          model.getParentId(),
+          0,
+          new VariableAdded(model.getParentId(), name, value),
+          MetaData.emptyInstance()
+      );
+      ProducerRecord<String, byte[]> producerRecord = messageConverter.createKafkaMessage(
+          genericDomainEventMessage, "cc-local-event");
+      kafkaTemplate.send(producerRecord);
+//      kafkaTemplate.send(
+//          new ProducerRecord<>(
+//              "cc-local-event",
+//              null, model.getParentId(),
+//              VariableAdded.newBuilder()
+//                  .setId(model.getParentId())
+//                  .setName(name)
+//                  .setValue(value)
+//                  .build().toByteArray(),
+//              List.of(
+//                  new RecordHeader("axon-message-id", "notused".getBytes(StandardCharsets.ISO_8859_1)),
+//                  new RecordHeader("axon-message-aggregate-id", model.getParentId().getBytes(StandardCharsets.ISO_8859_1)),
+//                  new RecordHeader("axon-message-type",VariableAdded.class.getTypeName().getBytes(
+//                      StandardCharsets.ISO_8859_1))
+//              ))
+//          );
     }
 
   }

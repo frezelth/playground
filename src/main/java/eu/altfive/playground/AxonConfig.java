@@ -1,7 +1,5 @@
 package eu.altfive.playground;
 
-import eu.altfive.playground.foundation.axon.ProtobufSerializer;
-import java.util.Collections;
 import java.util.concurrent.Executor;
 import java.util.concurrent.Executors;
 import javax.annotation.Nonnull;
@@ -9,34 +7,14 @@ import org.axonframework.commandhandling.AsynchronousCommandBus;
 import org.axonframework.commandhandling.CommandBus;
 import org.axonframework.commandhandling.CommandBusSpanFactory;
 import org.axonframework.commandhandling.DuplicateCommandHandlerResolver;
-import org.axonframework.commandhandling.SimpleCommandBus;
-import org.axonframework.common.AxonConfigurationException;
 import org.axonframework.common.caching.Cache;
 import org.axonframework.common.caching.WeakReferenceCache;
 import org.axonframework.common.transaction.TransactionManager;
-import org.axonframework.config.Configurer;
-import org.axonframework.config.ConfigurerModule;
-import org.axonframework.config.EventProcessingConfigurer;
-import org.axonframework.config.EventProcessingConfigurer.PooledStreamingProcessorConfiguration;
 import org.axonframework.eventhandling.EventMessage;
 import org.axonframework.eventhandling.EventMessageHandler;
 import org.axonframework.eventhandling.ListenerInvocationErrorHandler;
-import org.axonframework.eventhandling.PropagatingErrorHandler;
-import org.axonframework.eventhandling.TrackingEventProcessorConfiguration;
-import org.axonframework.extensions.kafka.KafkaProperties;
-import org.axonframework.extensions.kafka.configuration.KafkaMessageSourceConfigurer;
-import org.axonframework.extensions.kafka.eventhandling.KafkaMessageConverter;
-import org.axonframework.extensions.kafka.eventhandling.consumer.ConsumerFactory;
-import org.axonframework.extensions.kafka.eventhandling.consumer.Fetcher;
-import org.axonframework.extensions.kafka.eventhandling.consumer.streamable.StreamableKafkaMessageSource;
-import org.axonframework.extensions.kafka.eventhandling.consumer.subscribable.SubscribableKafkaMessageSource;
-import org.axonframework.extensions.kafka.eventhandling.producer.KafkaEventPublisher;
-import org.axonframework.extensions.kafka.eventhandling.producer.KafkaPublisher;
-import org.axonframework.messaging.StreamableMessageSource;
 import org.axonframework.serialization.Serializer;
 import org.axonframework.serialization.json.JacksonSerializer;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Primary;
@@ -125,16 +103,16 @@ public class AxonConfig {
 //    return kafkaEventPublisher;
 //  }
 
-  @Bean
-  @Primary
-  public Serializer serializer(){
-    return JacksonSerializer.defaultSerializer();
-  }
+//  @Bean
+//  @Primary
+//  public Serializer serializer(){
+//    return JacksonSerializer.defaultSerializer();
+//  }
 
-  @Bean
-  public Serializer eventSerializer(){
-    return new ProtobufSerializer();
-  }
+//  @Bean
+//  public Serializer eventSerializer(){
+//    return new ProtobufSerializer();
+//  }
 
 //  @Bean
 //  public SnapshotTriggerDefinition snapshotTrigger(Snapshotter snapshotter) {

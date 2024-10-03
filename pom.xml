@@ -140,54 +140,28 @@
 				<artifactId>spring-boot-maven-plugin</artifactId>
 			</plugin>
 
-			<plugin>
-				<groupId>org.xolstice.maven.plugins</groupId>
-				<artifactId>protobuf-maven-plugin</artifactId>
-				<version>0.5.1</version>
-				<configuration>
-					<protocArtifact>
-						com.google.protobuf:protoc:${protobuf.version}:exe:${os.detected.classifier}
-					</protocArtifact>
-					<!--          <protocPlugins>-->
-					<!--            <protocPlugin>-->
-					<!--              <id>SetOrClearProtoPlugin</id>-->
-					<!--              <groupId>eu.europa.ec.cc</groupId>-->
-					<!--              <artifactId>protoc-plugin</artifactId>-->
-					<!--              <version>1.1.0</version>-->
-					<!--              <mainClass>SetOrClearProtoPlugin</mainClass>-->
-					<!--              <jvmArgs>-->
-					<!--                &lt;!&ndash;<jvmArg>-agentlib:jdwp=transport=dt_socket,server=n,address=D02DI1613443RTD.net1.cec.eu.int:8002,suspend=y</jvmArg>&ndash;&gt;-->
-					<!--                <jvmArg>-DprojectProtoSourceDirectory=${project.basedir}/src/main/proto</jvmArg>-->
-					<!--              </jvmArgs>-->
-					<!--            </protocPlugin>-->
-					<!--          </protocPlugins>-->
-				</configuration>
-				<executions>
-					<execution>
-						<id>proto-compile</id>
-						<phase>generate-sources</phase>
-						<goals>
-							<goal>compile</goal>
-						</goals>
-						<configuration>
-							<writeDescriptorSet>true</writeDescriptorSet>
-						</configuration>
-					</execution>
-					<!--          <execution>-->
-					<!--            <id>proto-doc</id>-->
-					<!--            <goals>-->
-					<!--              <goal>compile-custom</goal>-->
-					<!--            </goals>-->
-					<!--            <configuration>-->
-					<!--              <pluginId>protoc-doc</pluginId>-->
-					<!--              <pluginArtifact>-->
-					<!--                eu.europa.ec.agri.process-centre:protoc-gen-doc:1.1.0a:exe:${os.detected.classifier}-->
-					<!--              </pluginArtifact>-->
-					<!--              <pluginParameter>html,${project.artifactId}-${project.version}.html</pluginParameter>-->
-					<!--            </configuration>-->
-					<!--          </execution>-->
-				</executions>
-			</plugin>
+<!--			<plugin>-->
+<!--				<groupId>org.xolstice.maven.plugins</groupId>-->
+<!--				<artifactId>protobuf-maven-plugin</artifactId>-->
+<!--				<version>0.5.1</version>-->
+<!--				<configuration>-->
+<!--					<protocArtifact>-->
+<!--						com.google.protobuf:protoc:${protobuf.version}:exe:${os.detected.classifier}-->
+<!--					</protocArtifact>-->
+<!--				</configuration>-->
+<!--				<executions>-->
+<!--					<execution>-->
+<!--						<id>proto-compile</id>-->
+<!--						<phase>generate-sources</phase>-->
+<!--						<goals>-->
+<!--							<goal>compile</goal>-->
+<!--						</goals>-->
+<!--						<configuration>-->
+<!--							<writeDescriptorSet>true</writeDescriptorSet>-->
+<!--						</configuration>-->
+<!--					</execution>-->
+<!--				</executions>-->
+<!--			</plugin>-->
 		</plugins>
 
 		<extensions>

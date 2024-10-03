@@ -4,8 +4,8 @@ import com.google.protobuf.Timestamp;
 import eu.altfive.playground.command.AddVariable;
 import eu.altfive.playground.command.CreateModel;
 import eu.altfive.playground.command.SetParent;
+import eu.altfive.playground.command.VariableValue;
 import eu.altfive.playground.projection.model.ElasticModelNested.NestedSpecificAttribute;
-import eu.europa.ec.cc.variables.proto.VariableValue;
 import java.io.Serializable;
 import java.time.LocalDate;
 import java.time.ZoneOffset;
@@ -123,23 +123,15 @@ public class Load {
         int r = random.nextInt(4);
         if (r == 0) {
           commandGateway.send(new AddVariable(aggregateId,
-              UUID.randomUUID().toString(),
-              eu.europa.ec.cc.variables.proto.VariableValue.newBuilder()
-                  .setStringValue(stringRandomizer.getRandomValue()).build()));
+              UUID.randomUUID().toString(), new eu.altfive.playground.command.VariableValue(stringRandomizer.getRandomValue(), null, null, null)));
         } else if (r == 1) {
-          commandGateway.send(new AddVariable(aggregateId, UUID.randomUUID().toString(),
-              eu.europa.ec.cc.variables.proto.VariableValue.newBuilder()
-                  .setLongValue(longRangeRandomizer.getRandomValue()).build()));
+          commandGateway.send(new AddVariable(aggregateId, UUID.randomUUID().toString(), new eu.altfive.playground.command.VariableValue(null, longRangeRandomizer.getRandomValue(), null, null)));
         } else if (r == 2) {
-          commandGateway.send(new AddVariable(aggregateId, UUID.randomUUID().toString(),
-              eu.europa.ec.cc.variables.proto.VariableValue.newBuilder()
-                  .setDoubleValue(doubleRandomizer.getRandomValue()).build()));
+          commandGateway.send(new AddVariable(aggregateId, UUID.randomUUID().toString(), new eu.altfive.playground.command.VariableValue(null, null,
+              doubleRandomizer.getRandomValue(), null)));
         } else {
-          commandGateway.send(new AddVariable(aggregateId, UUID.randomUUID().toString(),
-              VariableValue.newBuilder().setTimeValue(
-                      Timestamp.newBuilder()
-                          .setSeconds(dateRandomizer.getRandomValue().getTime() / 1000).build())
-                  .build()));
+          commandGateway.send(new AddVariable(aggregateId, UUID.randomUUID().toString(), new VariableValue(null, null,
+              null, dateRandomizer.getRandomValue())));
         }
       }
 

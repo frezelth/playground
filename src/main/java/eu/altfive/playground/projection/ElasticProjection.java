@@ -1,5 +1,16 @@
 package eu.altfive.playground.projection;
 
+import static org.axonframework.extensions.kafka.eventhandling.HeaderUtils.extractAxonMetadata;
+import static org.axonframework.extensions.kafka.eventhandling.HeaderUtils.valueAsLong;
+import static org.axonframework.extensions.kafka.eventhandling.HeaderUtils.valueAsString;
+import static org.axonframework.messaging.Headers.AGGREGATE_ID;
+import static org.axonframework.messaging.Headers.AGGREGATE_SEQ;
+import static org.axonframework.messaging.Headers.AGGREGATE_TYPE;
+import static org.axonframework.messaging.Headers.MESSAGE_ID;
+import static org.axonframework.messaging.Headers.MESSAGE_REVISION;
+import static org.axonframework.messaging.Headers.MESSAGE_TIMESTAMP;
+import static org.axonframework.messaging.Headers.MESSAGE_TYPE;
+
 import com.google.protobuf.Message;
 import eu.altfive.playground.command.CreateModel;
 import eu.altfive.playground.event.ModelCreated;
@@ -13,12 +24,18 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
+import org.apache.kafka.common.header.Headers;
+import org.axonframework.eventhandling.EventData;
 import org.axonframework.eventhandling.EventMessage;
+import org.axonframework.eventhandling.GenericDomainEventEntry;
 import org.axonframework.extensions.kafka.eventhandling.DefaultKafkaMessageConverter;
+import org.axonframework.extensions.kafka.eventhandling.HeaderUtils;
 import org.axonframework.extensions.kafka.eventhandling.KafkaMessageConverter;
+import org.axonframework.messaging.MetaData;
 import org.axonframework.serialization.Serializer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.context.ApplicationContext;
 import org.springframework.kafka.annotation.KafkaListener;
 import org.springframework.kafka.support.KafkaHeaders;
@@ -33,15 +50,19 @@ public class ElasticProjection {
   private final ElasticModelNestedRepository repository;
   private final ElasticNestedEventHandler elasticNestedEventHandler;
   private final ApplicationContext applicationContext;
+//  private final Serializer serializer;
+  private final KafkaMessageConverter<String, byte[]> kafkaMessageConverter;
 
   public static ThreadLocal<ElasticModelNested> currentDocument = new ThreadLocal<>();
 
   public ElasticProjection(ElasticModelNestedRepository repository,
       ElasticNestedEventHandler elasticNestedEventHandler,
-      ApplicationContext applicationContext) {
+      ApplicationContext applicationContext,
+      KafkaMessageConverter<String, byte[]> kafkaMessageConverter) {
     this.repository = repository;
     this.elasticNestedEventHandler = elasticNestedEventHandler;
     this.applicationContext = applicationContext;
+    this.kafkaMessageConverter = kafkaMessageConverter;
   }
 
   @KafkaListener(
@@ -49,16 +70,15 @@ public class ElasticProjection {
       groupId = "cc-local",
       batch = "true"
   )
-  public void onEvent(@Payload(required = false) List<byte[]> messages,
-      @Header(value = KafkaHeaders.RECEIVED_KEY, required = false) List<String> messageKeys,
-      @Header(KafkaHeaders.BATCH_CONVERTED_HEADERS) List<Map<String, Object>> headers) throws Exception {
+  public void onEvent(@Payload(required = false) List<ConsumerRecord<String, byte[]>> messages) throws Exception {
     if (messages.isEmpty()){
       LOGGER.info("Messages empty");
     }
 
     // load all aggregates for this batch
-    Set<String> documentIds = headers.stream()
-        .map(map -> new String((byte[])map.get("axon-message-aggregate-id")))
+    Set<String> documentIds = messages.stream()
+        .map(message -> HeaderUtils.valueAsString(message
+            .headers(), AGGREGATE_ID))
         .collect(Collectors.toSet());
 
     Map<String, ElasticModelNested> documentsPerId = ((List<ElasticModelNested>) repository.findAllById(
@@ -74,21 +94,17 @@ public class ElasticProjection {
           ElasticModelNested::new);
     }
 
-    for (int i = 0; i < messages.size(); i++) {
-      Class<?> messageType = Class.forName(new String((byte[])headers.get(i).get("axon-message-type")));
-      String documentId = new String((byte[])headers.get(i).get("axon-message-aggregate-id"));
+    for (ConsumerRecord<String, byte[]> message : messages) {
+//      Class<?> messageType = Class.forName(new String((byte[])headers.get(i).get("axon-message-type")));
+//      String documentId = new String((byte[])headers.get(i).get("axon-message-aggregate-id"));
+      String aggregateId = valueAsString(message
+          .headers(), AGGREGATE_ID);
+
+      EventMessage<?> eventMessage = kafkaMessageConverter.readKafkaMessage(message)
+          .orElseThrow();
       try {
-        currentDocument.set(documentsPerId.get(documentId));
-        Message message = (Message) messageType.getMethod("parseFrom", byte[].class)
-            .invoke(null, (Object) messages.get(i));
-//        if (message instanceof ModelCreated modelCreated){
-//          elasticNestedEventHandler.handle(modelCreated);
-//        } else if (message instanceof VariableAdded variableAdded){
-//          elasticNestedEventHandler.handle(variableAdded);
-//        } else if (message instanceof ParentSet parentSet){
-//          elasticNestedEventHandler.handle(parentSet);
-//        }
-        applicationContext.publishEvent(message);
+        currentDocument.set(documentsPerId.get(aggregateId));
+        applicationContext.publishEvent(eventMessage.getPayload());
       } finally {
         currentDocument.remove();
       }
